@@ -1,6 +1,6 @@
 use hound;
 use rustfft::{FftPlanner, num_complex::Complex};
-use image::{RgbImage, Rgb, imageops::resize};
+use image::{RgbImage, Rgb, imageops::resize, GrayImage, Luma};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reader = hound::WavReader::open("example.wav")?;
@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut spectrogram = Vec::new();
 
-    for chunk in samples.chunks(hop_size) {
+    for (idx, chunk) in samples.chunks(hop_size).enumerate() {
         let mut input: Vec<Complex<f32>> = chunk
             .iter()
             .map(|&x| Complex { re: x, im: 0.0 })
@@ -49,6 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|c| c.norm())
             .collect();
         spectrogram.push(magnitudes);
+
+        println!("Processing chunk {} of {}", idx + 1, samples.len() / hop_size + (samples.len() % hop_size != 0) as usize);
     }
 
     if spectrogram.is_empty() {
@@ -56,28 +58,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    println!("Rendering spectrogram...");
+
     // Improve height and scaling of the image
     let height = spectrogram[0].len();
     let width = spectrogram.len();
-    let mut img = RgbImage::new(width as u32, height as u32);
+    let mut rgb_img = RgbImage::new(width as u32, height as u32);
+    let mut gray_img = GrayImage::new(width as u32, height as u32);
 
     for (x, spectrum) in spectrogram.iter().enumerate() {
         for (y, &value) in spectrum.iter().enumerate() {
-            let intensity = ((value.log10() + 3.0).max(0.0) * 85.0) as u8; // Adjust log offset and multiplier
-            img.put_pixel(x as u32, height as u32 - y as u32 - 1, Rgb([intensity, intensity, intensity]));
+            let rgb_intensity = ((value.log10() + 3.0).max(0.0) * 85.0) as u8; // Adjust log offset and multiplier
+            rgb_img.put_pixel(x as u32, height as u32 - y as u32 - 1, Rgb([rgb_intensity, rgb_intensity, rgb_intensity]));
+
+            let gray_intensity = (value * 255.0) as u8;
+            gray_img.put_pixel(x as u32, y as u32, Luma([gray_intensity]));
+
+            println!("Rendering pixel (x: {}, y: {}) of (w: {}, h: {})", x, y, width, height);
         }
     }
 
     // Scale the image for higher resolution
-    let scaled_img = resize(
-        &img,
+    let scaled_rgb_img = resize(
+        &rgb_img,
+        width as u32,
+        (height * 2) as u32, // Increase height
+        image::imageops::FilterType::Lanczos3,
+    );
+    let scaled_gray_img = resize(
+        &gray_img,
         width as u32,
         (height * 2) as u32, // Increase height
         image::imageops::FilterType::Lanczos3,
     );
 
-    scaled_img.save("spectrogram_high_res.png")?;
-    println!("High-resolution spectrogram saved to spectrogram_high_res.png");
+    scaled_rgb_img.save("spectrogram_high_res.png")?;
+    scaled_gray_img.save("spectrogram_high_res_gray.png")?;
+
+    println!("High-resolution spectrogram saved to spectrogram_high_res.png and spectrogram_high_res_gray.png");
 
     Ok(())
 }
