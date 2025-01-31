@@ -73,8 +73,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let gray_intensity = (value * 255.0) as u8;
             gray_img.put_pixel(x as u32, y as u32, Luma([gray_intensity]));
-
-            println!("Rendering pixel (x: {}, y: {}) of (w: {}, h: {})", x, y, width, height);
         }
     }
 
